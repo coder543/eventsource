@@ -1,6 +1,7 @@
 package eventsource
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"sync"
@@ -12,7 +13,7 @@ import (
 type Client struct {
 	flush     http.Flusher
 	write     io.Writer
-	close     http.CloseNotifier
+	ctx       context.Context
 	events    chan *Event
 	closed    bool
 	waiter    sync.WaitGroup
@@ -22,8 +23,7 @@ type Client struct {
 }
 
 // NewClient creates a client wrapping a response writer.
-// The response writer must support http.Flusher and http.CloseNotifier
-// interfaces.
+// The response writer must support http.Flusher interface.
 // When writing, the client will automatically send some headers. Passing the
 // original http.Request helps determine which headers, but the request it is
 // optional.
@@ -41,12 +41,7 @@ func NewClient(w http.ResponseWriter, req *http.Request) *Client {
 	}
 	c.flush = flush
 
-	// Check to ensure we support close notifications
-	closer, ok := w.(http.CloseNotifier)
-	if !ok {
-		return nil
-	}
-	c.close = closer
+	c.ctx = req.Context()
 
 	// Send the initial headers
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -57,14 +52,15 @@ func NewClient(w http.ResponseWriter, req *http.Request) *Client {
 	flush.Flush()
 
 	// start the sending thread
-	c.waiter.Add(1)
+	c.waiter.Add(2)
 	go c.run()
 	go c.flusher()
 	return c
 }
 
 // Send queues an event to be sent to the client.
-// This does not block until the event has been sent.
+// This does not block until the event has been sent,
+// however it could block if the event queue is full.
 // Returns an error if the Client has disconnected
 func (c *Client) Send(ev *Event) error {
 	if c.closed {
@@ -72,6 +68,22 @@ func (c *Client) Send(ev *Event) error {
 	}
 	c.events <- ev.Clone()
 	return nil
+}
+
+// Send queues an event to be sent to the client.
+// This guarantees not block until the event has been sent.
+// Returns true if blocked
+// Returns an error if the Client has disconnected
+func (c *Client) SendNonBlocking(ev *Event) (bool, error) {
+	if c.closed {
+		return false, io.ErrClosedPipe
+	}
+	select {
+	case c.events <- ev.Clone():
+	default:
+		return true, nil
+	}
+	return false, nil
 }
 
 // Shutdown terminates a client connection
@@ -89,6 +101,7 @@ func (c *Client) Wait() {
 
 // Worker thread for the client responsible for writing events
 func (c *Client) run() {
+	done := c.ctx.Done()
 	for {
 		select {
 		case ev, ok := <-c.events:
@@ -105,7 +118,7 @@ func (c *Client) run() {
 			c.lastWrite = time.Now()
 			c.lock.Unlock()
 
-		case <-c.close.CloseNotify():
+		case <-done:
 			c.closed = true
 			c.waiter.Done()
 			return
@@ -132,4 +145,5 @@ func (c *Client) flusher() {
 	}
 
 	ticker.Stop()
+	c.waiter.Done()
 }

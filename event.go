@@ -155,7 +155,7 @@ func (e *Event) WriteRaw(p []byte) (int, error) {
 // String returns the Event in wire format as a string
 func (e *Event) String() string {
 	e.prepare()
-	return string(e.buf.Bytes())
+	return e.buf.String()
 }
 
 // Clone returns a deep copy of the event

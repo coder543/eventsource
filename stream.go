@@ -44,7 +44,6 @@ import (
 type Stream struct {
 	clients           map[*Client]topicList
 	listLock          sync.RWMutex
-	shutdownWait      sync.WaitGroup
 	clientConnectHook func(*http.Request, *Client)
 }
 
