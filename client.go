@@ -118,9 +118,12 @@ func (c *Client) run() {
 func (c *Client) flusher() {
 	ticker := time.NewTicker(100 * time.Millisecond)
 
-	for !c.closed {
+	for {
 		<-ticker.C
 		c.lock.Lock()
+		if c.closed {
+			break
+		}
 		if c.lastFlush.Before(c.lastWrite) {
 			c.lastFlush = c.lastWrite
 			c.flush.Flush()
