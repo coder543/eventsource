@@ -16,6 +16,7 @@ type Client struct {
 	events    chan *Event
 	closed    bool
 	waiter    sync.WaitGroup
+	lock      sync.Mutex
 	lastFlush time.Time
 	lastWrite time.Time
 }
@@ -99,8 +100,10 @@ func (c *Client) run() {
 			}
 
 			// send the event
+			c.lock.Lock()
 			io.Copy(c.write, ev)
 			c.lastWrite = time.Now()
+			c.lock.Unlock()
 
 		case <-c.close.CloseNotify():
 			c.closed = true
@@ -117,10 +120,12 @@ func (c *Client) flusher() {
 
 	for !c.closed {
 		<-ticker.C
+		c.lock.Lock()
 		if c.lastFlush.Before(c.lastWrite) {
 			c.lastFlush = c.lastWrite
 			c.flush.Flush()
 		}
+		c.lock.Unlock()
 	}
 
 	ticker.Stop()
