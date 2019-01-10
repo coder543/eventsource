@@ -129,10 +129,8 @@ func (c *Client) run() {
 
 // flusher amortizes flushing costs for high activity SSE channels
 func (c *Client) flusher() {
-	ticker := time.NewTicker(100 * time.Millisecond)
-
 	for {
-		<-ticker.C
+		time.Sleep(100 * time.Millisecond)
 		c.lock.Lock()
 		if c.closed {
 			break
@@ -144,6 +142,5 @@ func (c *Client) flusher() {
 		c.lock.Unlock()
 	}
 
-	ticker.Stop()
 	c.waiter.Done()
 }
