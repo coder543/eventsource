@@ -85,7 +85,7 @@ func (s *Stream) Broadcast(e *Event) {
 	defer s.listLock.RUnlock()
 
 	for cli := range s.clients {
-		cli.Send(e)
+		cli.Send(*e.Clone())
 	}
 }
 
@@ -127,7 +127,7 @@ func (s *Stream) Publish(topic string, e *Event) {
 
 	for cli, topics := range s.clients {
 		if topics[topic] {
-			cli.Send(e)
+			cli.Send(*e.Clone())
 		}
 	}
 }
