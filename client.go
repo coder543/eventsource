@@ -3,6 +3,7 @@ package eventsource
 import (
 	"context"
 	"io"
+	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -11,15 +12,14 @@ import (
 // Client wraps an http connection and converts it to an
 // event stream.
 type Client struct {
-	flush     http.Flusher
-	write     io.Writer
-	ctx       context.Context
-	events    chan Event
-	closed    bool
-	waiter    sync.WaitGroup
-	lock      sync.Mutex
-	lastFlush uint64
-	lastWrite uint64
+	flusher  http.Flusher
+	write    io.Writer
+	ctx      context.Context
+	events   chan Event
+	closed   bool
+	waiter   sync.WaitGroup
+	lock     sync.Mutex
+	flushing *time.Timer
 }
 
 // NewClient creates a client wrapping a response writer.
@@ -35,11 +35,11 @@ func NewClient(w http.ResponseWriter, req *http.Request) *Client {
 	}
 
 	// Check to ensure we support flushing
-	flush, ok := w.(http.Flusher)
+	flusher, ok := w.(http.Flusher)
 	if !ok {
 		return nil
 	}
-	c.flush = flush
+	c.flusher = flusher
 
 	c.ctx = req.Context()
 
@@ -49,12 +49,11 @@ func NewClient(w http.ResponseWriter, req *http.Request) *Client {
 	if req == nil || req.ProtoMajor < 2 {
 		w.Header().Set("Connection", "keep-alive")
 	}
-	flush.Flush()
+	flusher.Flush()
 
 	// start the sending thread
-	c.waiter.Add(2)
+	c.waiter.Add(1)
 	go c.run()
-	go c.flusher()
 	return c
 }
 
@@ -115,7 +114,9 @@ func (c *Client) run() {
 			// send the event
 			c.lock.Lock()
 			io.Copy(c.write, &ev)
-			c.lastWrite += 1
+			if c.flushing == nil {
+				c.flushing = time.AfterFunc(100*time.Millisecond, c.flush)
+			}
 			c.lock.Unlock()
 
 		case <-done:
@@ -128,19 +129,13 @@ func (c *Client) run() {
 }
 
 // flusher amortizes flushing costs for high activity SSE channels
-func (c *Client) flusher() {
-	for {
-		time.Sleep(100 * time.Millisecond)
-		c.lock.Lock()
-		if c.closed {
-			break
-		}
-		if c.lastFlush < c.lastWrite {
-			c.lastFlush = c.lastWrite
-			c.flush.Flush()
-		}
-		c.lock.Unlock()
+func (c *Client) flush() {
+	c.lock.Lock()
+	log.Println("flushing!")
+	defer c.lock.Unlock()
+	if c.closed {
+		return
 	}
-
-	c.waiter.Done()
+	c.flushing = nil
+	c.flusher.Flush()
 }
