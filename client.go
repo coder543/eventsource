@@ -3,7 +3,6 @@ package eventsource
 import (
 	"context"
 	"io"
-	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -131,7 +130,6 @@ func (c *Client) run() {
 // flusher amortizes flushing costs for high activity SSE channels
 func (c *Client) flush() {
 	c.lock.Lock()
-	log.Println("flushing!")
 	defer c.lock.Unlock()
 	if c.closed {
 		return
