@@ -23,7 +23,7 @@ type Client struct {
 	flushLatency time.Duration
 }
 
-type Options struct {
+type ClientOptions struct {
 	ChannelSize  int
 	FlushLatency time.Duration
 }
@@ -34,9 +34,9 @@ type Options struct {
 // original http.Request helps determine which headers, but the request it is
 // optional.
 // Returns nil on error.
-func NewClient(w http.ResponseWriter, req *http.Request, options ...Options) *Client {
+func NewClient(w http.ResponseWriter, req *http.Request, options ...ClientOptions) *Client {
 	if len(options) > 1 {
-		log.Panicln("only one Options value may be provided")
+		log.Panicln("only one ClientOptions value may be provided")
 	}
 
 	flushLatency := 100 * time.Millisecond
