@@ -56,12 +56,18 @@ func NewClient(w http.ResponseWriter, req *http.Request) *Client {
 	return c
 }
 
+func (c *Client) Closed() bool {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	return c.closed
+}
+
 // Send queues an event to be sent to the client.
 // This does not block until the event has been sent,
 // however it could block if the event queue is full.
 // Returns an error if the Client has disconnected
 func (c *Client) Send(ev Event) error {
-	if c.closed {
+	if c.Closed() {
 		return io.ErrClosedPipe
 	}
 	c.events <- ev
@@ -73,7 +79,7 @@ func (c *Client) Send(ev Event) error {
 // Returns true if blocked
 // Returns an error if the Client has disconnected
 func (c *Client) SendNonBlocking(ev Event) (bool, error) {
-	if c.closed {
+	if c.Closed() {
 		return false, io.ErrClosedPipe
 	}
 	select {
@@ -105,7 +111,9 @@ func (c *Client) run() {
 		case ev, ok := <-c.events:
 			// check for shutdown
 			if !ok {
+				c.lock.Lock()
 				c.closed = true
+				c.lock.Unlock()
 				c.waiter.Done()
 				return
 			}
@@ -119,7 +127,9 @@ func (c *Client) run() {
 			c.lock.Unlock()
 
 		case <-done:
+			c.lock.Lock()
 			c.closed = true
+			c.lock.Unlock()
 			c.waiter.Done()
 			return
 		}
@@ -131,7 +141,7 @@ func (c *Client) run() {
 func (c *Client) flush() {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	if c.closed {
+	if c.closed || c.ctx.Err() != nil {
 		return
 	}
 	c.flushing = nil
