@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"strconv"
 	"strings"
-	"unicode"
 )
 
 // Event holds the structured data for an event.
